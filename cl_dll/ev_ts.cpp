@@ -246,9 +246,8 @@ void EV_TSBulletHit(int idx, const float* src, const float* end, pmtrace_t& tr, 
 		if (chType != CHAR_TEX_FLESH)
 		{
 			extern float g_flClientSlow; // cl_dll/ts_powerup_hud.cpp — smoothed slow factor
-			int pitch = 100 + (int)(300.0f * g_flClientSlow);
-			if (pitch > 255) pitch = 255;
-			if (pitch < 1) pitch = 1;
+			// unclamped, as client.dll 0x10044db7 passes it
+			const int pitch = 100 + (int)(300.0f * g_flClientSlow);
 			char ric[24];
 			sprintf(ric, "debris/ric%d.wav", gEngfuncs.pfnRandomLong(1, 5));
 			// Entity 0 (the WORLD), so the sound is spatialised AT the impact `pos` and attenuates with
@@ -1107,12 +1106,11 @@ void EV_TSFire(event_args_t* args)
 	{
 		// RE (scratchpad/SLOWMO_PRESENTATION_RE.md): the original pitches ALL weapon-fire sounds UP —
 		// pitch = 100 + (int)(300 * slow), where slow is the local client's smoothed slow factor
-		// (1.0 normal → pitch 400, engine-clamped ~255). Slow-motion lowers `slow` → the gunshots
-		// deepen toward 100. (Our old flat PITCH_NORM is why normal fire sounded "already slowed".)
+		// (1.0 normal → pitch 400). Slow-motion lowers `slow` → the gunshots deepen toward 100.
+		// Passed unclamped, as the original does: neither GoldSrc's S_StartDynamicSound nor Xash caps
+		// pitch, so 400 plays at 4x. A cap at 255 played normal fire at 2.55x, audibly slowed.
 		extern float g_flClientSlow; // cl_dll/ts_powerup_hud.cpp — current smoothed slow factor
-		int pitch = 100 + (int)(300.0f * g_flClientSlow);
-		if (pitch > 255) pitch = 255;
-		if (pitch < 1) pitch = 1;
+		const int pitch = 100 + (int)(300.0f * g_flClientSlow);
 		gEngfuncs.pEventAPI->EV_PlaySound(idx, origin, CHAN_WEAPON, snd,
 			silShot ? gEngfuncs.pfnRandomFloat(0.84f, 0.92f) : VOL_NORM,
 			silShot ? ATTN_NORM * 2.0f : ATTN_NORM, 0, pitch);
@@ -1207,8 +1205,7 @@ void EV_TSFireLinked(event_args_t* args)
 	if (snd)
 	{
 		extern float g_flClientSlow;
-		int pitch = 100 + (int)(300.0f * g_flClientSlow);
-		if (pitch > 255) pitch = 255;
+		const int pitch = 100 + (int)(300.0f * g_flClientSlow); // unclamped, as EV_TSFire
 		gEngfuncs.pEventAPI->EV_PlaySound(idx, origin, CHAN_WEAPON, snd,
 			silShot ? gEngfuncs.pfnRandomFloat(0.84f, 0.92f) : VOL_NORM,
 			silShot ? ATTN_NORM * 2.0f : ATTN_NORM, 0, pitch);
