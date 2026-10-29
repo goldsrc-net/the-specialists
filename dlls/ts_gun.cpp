@@ -1061,13 +1061,16 @@ void CTSGun::StandardFire(const s_weapon_info *wi)
 	// fold it into this shot's cone, so sustained fire walks the spread out (it recovers in PreThink).
 	// silenced = attach bit0 present and NOT integral (an MP5SD's built-in silencer doesn't count)
 	const bool sfSilenced = (m_items[m_weaponType].attach & 1) != 0 && (wi->attachBuiltin & 1) == 0;
-	if (wi->bUsesSpread)
-	{
-		// @0x82638/0x82674: the recoil increment is x5 while MOVING faster than 175 u/s
-		const float recoil = (m_pPlayer->pev->velocity.Length() > 175.0f) ? 5.0f * wi->flRecoil
-		                                                                  : wi->flRecoil;
-		ScaleSpread(flSpread, recoil, sfSilenced);
-	}
+	// Two weapons fire worse on the move (StandardFire 0x8256c-0x82674); every other gun keeps its
+	// standing growth however fast the player goes.
+	// - the Barrett: over 35 u/s the accumulator jumps to 0.3, so even the first shot misses
+	if (m_weaponType == TSW_BARRETT && m_pPlayer->pev->velocity.Length() > 35.0f)
+		m_pPlayer->m_flSpreadAccum = 0.3f;
+	// - the M60: over 175 u/s the growth is x5, applied whatever bUsesSpread says
+	if (m_weaponType == TSW_M60 && m_pPlayer->pev->velocity.Length() > 175.0f)
+		ScaleSpread(flSpread, 5.0f * wi->flRecoil, sfSilenced);
+	else if (wi->bUsesSpread)
+		ScaleSpread(flSpread, wi->flRecoil, sfSilenced);
 
 	m_iClip--;
 	// @0x824a4 StandardFire: a single that HAS an akimbo variant mirrors its shot into the parked akimbo —
@@ -1230,8 +1233,8 @@ void CTSGun::ShotgunFire(const s_weapon_info *wi)
 // @ ScaleSpread__6CTSGun (@0x802a8) — TS dynamic accuracy. Folds the per-player spread accumulator
 // (CBasePlayer::m_flSpreadAccum, the .so's player+0x778) into THIS shot's cone, then grows the accumulator
 // for the next shot — so sustained fire walks the spread out. The accumulator recovers over time in
-// CBasePlayer::PreThink. `increment` = the weapon's flRecoil (s_weapon_info+0x34) — x5 while MOVING
-// faster than 175 u/s, x2 for the akimbo LINKED shot (the callers fold those in).
+// CBasePlayer::PreThink. `increment` = the weapon's flRecoil (s_weapon_info+0x34) — x5 for the M60
+// moving faster than 175 u/s, x2 for the akimbo LINKED shot (the callers fold those in).
 // ⚠ ARG IDENTITY (round-6 RE): the 4th arg is the SILENCED flag (attach bit0 present and NOT
 // integral — both original call sites @0x82674/@0x82ad4 compute exactly that), NOT ducking as we
 // had mislabeled — a SILENCER tightens the base cone x0.875 and the growth x0.775.
