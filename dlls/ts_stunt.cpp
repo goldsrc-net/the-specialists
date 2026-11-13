@@ -360,8 +360,11 @@ void CTSStunt::GoWallClimb()
 	UTIL_MakeVectors(pev->v_angle);
 	m_vecStuntDir = gpGlobals->v_forward * -1.0f;
 
+	// RE GoWallClimb@0x8aa92: clears WHEEL_DONE first, so a superjump's hold-to-climb gravity
+	// (PM_CheckParamters) ends with it, and the wall-jump's active bit; WALLDIVE is left alone.
+	pev->iuser4 &= ~TSSTUNT_WHEEL_DONE;
 	pev->iuser4 |= TSSTUNT_PRONE | TSSTUNT_WALLCLIMB | TSSTUNT_WALLCLIMB_A;
-	pev->iuser4 &= ~TSSTUNT_WALLDIVE;
+	pev->iuser4 &= ~TSSTUNT_WALLJUMP_A;
 	pev->view_ofs = g_vecZero;
 
 	m_pPlayer->m_TSAnim.Animate(m_pPlayer, 0x38);
@@ -383,8 +386,11 @@ void CTSStunt::GoWallJump()
 	UTIL_MakeVectors(pev->v_angle);
 	m_vecStuntDir = gpGlobals->v_forward * -1.0f;
 
+	// RE GoWallJump@0x8a84a: clears WHEEL_DONE first, so a superjump's hold-to-climb gravity
+	// (PM_CheckParamters) ends with it, and the wall-climb's active bit; WALLDIVE is left alone.
+	pev->iuser4 &= ~TSSTUNT_WHEEL_DONE;
 	pev->iuser4 |= TSSTUNT_PRONE | TSSTUNT_WALLJUMP | TSSTUNT_WALLJUMP_A;
-	pev->iuser4 &= ~TSSTUNT_WALLDIVE;
+	pev->iuser4 &= ~TSSTUNT_WALLCLIMB_A;
 	pev->view_ofs = g_vecZero;
 
 	m_pPlayer->m_TSAnim.Animate(m_pPlayer, 0x37);
