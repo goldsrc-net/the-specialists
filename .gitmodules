@@ -4,4 +4,4 @@
 [submodule "third_party/vgui_support"]
 	path = third_party/vgui_support
 	url = https://github.com/goldsrc-net/vgui_support.git
-	branch = emscripten
+	branch = 64bit

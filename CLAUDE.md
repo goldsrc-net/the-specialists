@@ -168,10 +168,10 @@ this host links glibc 2.38+ and won't run on Debian 12 / AL2023). Verify:
 **CMake is the only build system** (`dlls/CMakeLists.txt`, `cl_dll/CMakeLists.txt`). The legacy
 `linux/Makefile*`, the `projects/vs2019/*` MSVC projects and `scripts/check-source-lists.py` were
 removed in `94c0bba`. The submodules (`third_party/openvgui` with its `miniutl`,
-`third_party/vgui_support` with its `vgui-dev`) must be cloned recursively. `.gitmodules` names
-`goldsrc-net/vgui_support` over https for CI (which has a token); locally clone it over ssh:
-`git config submodule.third_party/vgui_support.url git@github.com:goldsrc-net/vgui_support.git`
-before `git submodule update --init --recursive` (set in this checkout since 2026-10-08).
+`third_party/vgui_support` with its `vgui-dev`) must be cloned recursively. Both are public:
+vgui_support is goldsrc-net's public fork of FWGS's, branch `64bit` (FWGS's code plus the quit fix;
+2026-11-12). The wasm work it used to share a repo with is private in `goldsrc-net/vgui_support-web`;
+the wasm client build doesn't compile the shim. CI's checkouts need no token.
 
 The **client** builds too: `scripts/build.sh <arch> client`, `scripts/build.sh <arch> all` for both.
 Per-target client linkage:
@@ -181,7 +181,8 @@ Per-target client linkage:
   yaw locks at ±90° and VGUI panels get no cursor.
 - **Windows**: Win32 `GetCursorPos`/`SetCursorPos`, no SDL (no `SDL2.lib` is shipped, so any SDL
   reference fails the link).
-- **amd64 / aarch64 / wasm** (Xash): static openvgui + the `vgui_support` shim; input pushed by the
+- **amd64 / aarch64** (Xash): static openvgui + the `vgui_support` shim. **wasm**: the engine hosts
+  VGUI, so no shim (`HALFLIFE_VGUI_STATIC` is off for Emscripten). Both take input pushed by the
   engine (`IN_ClientLookEvent`/`IN_ClientMoveEvent`), no SDL.
 
 ### Running / testing (this box HAS a GPU + display — not headless)

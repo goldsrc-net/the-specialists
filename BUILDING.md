@@ -6,14 +6,12 @@ the client (`client.so` / `client.dll`). CMake is the only build system; the scr
 ## Getting the source
 
 ```sh
-git clone git@github.com:goldsrc-net/mod-ts.git && cd mod-ts
-git config submodule.third_party/vgui_support.url git@github.com:goldsrc-net/vgui_support.git
-git submodule update --init --recursive
+git clone --recursive git@github.com:goldsrc-net/mod-ts.git
 ```
 
 The client needs the submodules: `third_party/openvgui` (with its `miniutl`) and
-`third_party/vgui_support` (with its `vgui-dev`). `.gitmodules` names vgui_support over https because CI
-clones it with a token; the `git config` line makes a local clone use ssh instead.
+`third_party/vgui_support` (with its `vgui-dev`), both public: openvgui is FWGS's, vgui_support is
+goldsrc-net's fork of FWGS's at its `64bit` branch (FWGS's code plus the quit fix the client needs).
 
 ## Linux (i386, amd64, aarch64)
 

@@ -62,11 +62,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
-          # Fine-grained PAT / GitHub App token with Contents:Read on the private
-          # goldsrc-net/vgui_support submodule (the default GITHUB_TOKEN is scoped to
-          # this repo only and can't clone another private repo). Set the secret in
-          # repo/org settings; used for the main checkout + recursive submodule auth.
-          token: ${{ secrets.SUBMODULES_TOKEN }}
 
       - name: Let git read the checkout (the container runs as another user)
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -121,11 +116,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
-          # Fine-grained PAT / GitHub App token with Contents:Read on the private
-          # goldsrc-net/vgui_support submodule (the default GITHUB_TOKEN is scoped to
-          # this repo only and can't clone another private repo). Set the secret in
-          # repo/org settings; used for the main checkout + recursive submodule auth.
-          token: ${{ secrets.SUBMODULES_TOKEN }}
 
       - name: Let git read the checkout (the container runs as another user)
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -159,11 +149,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
-          # Fine-grained PAT / GitHub App token with Contents:Read on the private
-          # goldsrc-net/vgui_support submodule (the default GITHUB_TOKEN is scoped to
-          # this repo only and can't clone another private repo). Set the secret in
-          # repo/org settings; used for the main checkout + recursive submodule auth.
-          token: ${{ secrets.SUBMODULES_TOKEN }}
 
       - name: Let git read the checkout (the container runs as another user)
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -204,11 +189,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
-          # Fine-grained PAT / GitHub App token with Contents:Read on the private
-          # goldsrc-net/vgui_support submodule (the default GITHUB_TOKEN is scoped to
-          # this repo only and can't clone another private repo). Set the secret in
-          # repo/org settings; used for the main checkout + recursive submodule auth.
-          token: ${{ secrets.SUBMODULES_TOKEN }}
 
       - name: Configure (Win32)
         run: cmake -B build-win32 -A Win32
@@ -259,11 +239,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
-          # Fine-grained PAT / GitHub App token with Contents:Read on the private
-          # goldsrc-net/vgui_support submodule (the default GITHUB_TOKEN is scoped to
-          # this repo only and can't clone another private repo). Set the secret in
-          # repo/org settings; used for the main checkout + recursive submodule auth.
-          token: ${{ secrets.SUBMODULES_TOKEN }}
 
       - name: Configure (x64)
         run: cmake -B build-win64 -A x64
