@@ -888,6 +888,9 @@ bool CBaseDoor::DoorActivate()
 	if (m_bCracked) // @0xb6d50: a cracked door stays shut until TraceAttack breaks it
 		return false;
 
+	if (FBitSet(pev->effects, EF_NODRAW)) // @0xb6d77: a broken door is hidden until it respawns; it cannot be used
+		return false;
+
 	if (!UTIL_IsMasterTriggered(m_sMaster, m_hActivator))
 		return false;
 
