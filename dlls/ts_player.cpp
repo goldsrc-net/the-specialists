@@ -284,6 +284,7 @@ void CBasePlayer::SlowMotionFlow()
 		TSSlowProjectiles(this, "grenade", false);
 		TSSlowProjectiles(this, "knife", true);
 		TSSlowProjectiles(this, "WorldGun", true);
+		TSSlowProjectiles(this, "rpg_rocket", true); // reTS's tank rocket (func_tank.cpp), not TS 3.0's
 	}
 }
 

@@ -1137,6 +1137,7 @@ void CTSGameRules::GlobalSlowMotion2(float scale, int slowBullets)
 	TSGlobalSlowClass("grenade", scale);
 	TSGlobalSlowClass("knife", scale);
 	TSGlobalSlowClass("WorldGun", scale);
+	TSGlobalSlowClass("rpg_rocket", scale); // reTS's tank rocket (func_tank.cpp), not TS 3.0's
 }
 
 // @ SetGlobalSlowMotion__12CTSGameRulesff — start/stop a timed global slow-motion.

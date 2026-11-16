@@ -18,6 +18,8 @@
 #include "effects.h"
 #include "weapons.h"
 #include "explode.h"
+#include "skill.h"
+#include "ts_utils.h"
 
 #include "player.h"
 
@@ -928,6 +930,81 @@ void CFuncTankRocket::Fire(const Vector& barrelEnd, const Vector& forward, entva
 	}
 	else
 		CFuncTank::Fire(barrelEnd, forward, pev);
+}
+
+
+// rpg_rocket: func_tankrocket's rocket, which TS 3.0 does not have. Its CFuncTankRocket precaches
+// and creates "rpg_rocket" (ts_i386.so 0xb47f0, 0xb4824), but ts_i386.so links no such class (the
+// SDK's CRpgRocket went with CRpg and CGrenade), so its rocket tanks fire nothing. reTS gives them
+// a rocket on purpose (reference/DEVIATIONS.md). It flies straight from the barrel at the speed
+// the SDK's rocket reaches and explodes through TSExplosion, TS's blast, with the SDK rocket's
+// damage out to the SDK's radius (2.5 times the damage). TS keeps a projectile's slow-motion rate
+// in fuser1 (CBaseEntity::GoSlow): the rocket flies at that rate, and SlowMotionFlow and
+// GlobalSlowMotion2 slow it as they slow a grenade.
+#define TSROCKET_SPEED 2000
+
+class CTSRocket : public CBaseEntity
+{
+public:
+	void Spawn() override;
+	void Precache() override;
+	void EXPORT FlyThink();
+	void EXPORT RocketTouch(CBaseEntity* pOther);
+
+	Vector m_vecFly; // the velocity at the normal rate
+};
+LINK_ENTITY_TO_CLASS(rpg_rocket, CTSRocket);
+
+void CTSRocket::Precache()
+{
+	PRECACHE_MODEL("models/rpgrocket.mdl");
+}
+
+void CTSRocket::Spawn()
+{
+	Precache();
+	pev->movetype = MOVETYPE_FLY;
+	pev->solid = SOLID_BBOX;
+	SET_MODEL(ENT(pev), "models/rpgrocket.mdl");
+	UTIL_SetSize(pev, g_vecZero, g_vecZero);
+	UTIL_SetOrigin(pev, pev->origin);
+	pev->dmg = gSkillData.plrDmgRPG;
+	pev->fuser1 = 1.0f; // the slow-motion rate, 1 = normal
+
+	UTIL_MakeVectors(pev->angles);
+	m_vecFly = gpGlobals->v_forward * TSROCKET_SPEED;
+	pev->velocity = m_vecFly;
+	pev->angles = UTIL_VecToAngles(m_vecFly);
+
+	SetTouch(&CTSRocket::RocketTouch);
+	SetThink(&CTSRocket::FlyThink);
+	pev->nextthink = gpGlobals->time + 0.1;
+}
+
+void CTSRocket::FlyThink()
+{
+	if (!IsInWorld())
+	{
+		RemoveEntityFromSlowedArray(this);
+		UTIL_Remove(this);
+		return;
+	}
+
+	// the grenade's floor on the rate (CM61Grenade::WaitThink)
+	pev->velocity = m_vecFly * ((pev->fuser1 < 0.01f) ? 0.01f : pev->fuser1);
+	pev->nextthink = gpGlobals->time + 0.1;
+}
+
+void CTSRocket::RocketTouch(CBaseEntity* pOther)
+{
+	SetTouch(NULL);
+	SetThink(NULL);
+
+	Vector vecOrigin = pev->origin;
+	TSExplosion(vecOrigin, pev, pev->owner ? VARS(pev->owner) : NULL, pev->dmg, DMG_BLAST | DMG_NEVERGIB, 0, pev->dmg * 2.5f);
+
+	RemoveEntityFromSlowedArray(this);
+	UTIL_Remove(this);
 }
 
 

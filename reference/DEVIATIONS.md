@@ -54,6 +54,21 @@ reTS builds with hidden visibility, so in the stripped Linux libraries the packa
 found (AMX Mod X also reads an unstripped library's full symbol table, which is why dev builds worked).
 `dlls/gamerules.h` gives `g_pGameRules` default visibility to export it the same way.
 
+### rpg_rocket (server entity)
+
+TS 3.0's `func_tankrocket` precaches and creates `rpg_rocket` (`CFuncTankRocket::Precache` and `Fire`,
+ts_i386.so 0xb47f0 and 0xb4824), but TS 3.0 removed the SDK's RPG and its rocket, so the engine finds no
+such entity and a rocket tank fires nothing. reTS links an `rpg_rocket` of its own (`CTSRocket`,
+`dlls/func_tank.cpp`), so its rocket tanks fire. This one changes the default: there is no switch back to
+TS 3.0's silent tank. No shipped TS map places a `func_tankrocket`; a stock Valve map loaded under TS may.
+
+The rocket flies straight from the barrel at 2000 units a second and explodes on contact through
+`TSExplosion`, TS's own blast, with the SDK rocket's damage (`gSkillData.plrDmgRPG`, 120 in multiplayer) falling to
+nothing at 2.5 times that. It honours slow motion as TS's grenades do: it flies at the rate `GoSlow` keeps in
+`fuser1`, and the player's slow-motion bubble (`SlowMotionFlow`) and the global slow motion
+(`GlobalSlowMotion2`) slow it by its classname alongside grenades, knives and dropped guns. It precaches
+`models/rpgrocket.mdl`, which TS loads from `valve`. Steven's call, 2026-11-16.
+
 ## Forced by the build
 
 None of these were chosen. They follow from building TS's code with a modern compiler on Half-Life
