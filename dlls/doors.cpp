@@ -1061,8 +1061,17 @@ void CRotDoor::BreakableRespawn(bool forceRespawn)
 LINK_ENTITY_TO_CLASS(func_door_rotating, CRotDoor);
 
 
+// @0xb79b8: TS's own CRotDoor::Spawn opens with the same breakable-door init as CBaseDoor::Spawn
+// (@0xb60cc) and ends with the same info_breakable helper, so a rotating door with "maxdamage"
+// breaks and respawns like a func_door. The pose is saved before START_OPEN turns the door.
 void CRotDoor::Spawn()
 {
+	m_vecSpawnOrigin = pev->origin;
+	m_vecSpawnAngles = pev->angles;
+	m_iAccumDamage = 0;
+	m_flDoorNextAttack = 0;
+	pev->takedamage = (m_flBreakHealth > 0) ? DAMAGE_YES : DAMAGE_NO;
+
 	Precache();
 	// set the axis of rotation
 	CBaseToggle::AxisDir(pev);
@@ -1108,6 +1117,15 @@ void CRotDoor::Spawn()
 	}
 	else // touchable button
 		SetTouch(&CRotDoor::DoorTouch);
+
+	// @0xb7c75: the respawn helper, created once and linked both ways, as CBaseDoor::Spawn does
+	if (m_flRespawnTime >= 0)
+	{
+		if (!(CBaseEntity*)m_hRespawner)
+			m_hRespawner = CBaseEntity::Create("info_breakable", VecBModelOrigin(pev), pev->angles, edict());
+		if ((CBaseEntity*)m_hRespawner)
+			((CInfoBreakable*)(CBaseEntity*)m_hRespawner)->m_hBreakable = this;
+	}
 }
 
 
