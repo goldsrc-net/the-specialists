@@ -387,13 +387,15 @@ void CBaseDoor::TraceAttack(entvars_t* pevAttacker, float flDamage, Vector vecDi
 		return;
 	if (pev->takedamage == DAMAGE_NO)
 		return;
-	if ((bitsDamageType & 0x6000040) == 0) // only bullet/blast/TS-club types break a door
+	// only blast (0x40), bit 25 (0x2000000) and TS close combat (0x4000000) hurt a door; a TS
+	// bullet is DMG_BULLET | DMG_NEVERGIB (0x1002) and never does
+	if ((bitsDamageType & 0x6000040) == 0)
 		return;
 	if (FClassnameIs(pev, "func_water"))
 		return;
 
 	float dmg = flDamage;
-	if (bitsDamageType & DMG_BULLET) // 0x40 — bullets do double
+	if (bitsDamageType & DMG_BLAST) // @0xb5844 testl $0x40: blast does double
 		dmg *= 2;
 	m_iAccumDamage += (int)dmg;
 	if ((float)m_iAccumDamage < m_flBreakHealth)
