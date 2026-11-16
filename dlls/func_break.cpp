@@ -39,7 +39,6 @@ entvars_t* g_BreakableLastpevAttacker = nullptr;
 // CBreakable::Die @0x752e0 (material switch: case 0 glass → gmsgTSCreateDebris). The fragments
 // fly in g_vecAttackDir (the bullet/attack direction). See reference/BULLETS.md.
 int gmsgTSCreateDebris = 0;
-static int g_idGlassFrag = 0; // sprites/glassfrag.spr model index (precached)
 
 // =================== FUNC_Breakable ==============================================
 
@@ -360,7 +359,6 @@ void CBreakable::Precache()
 
 		PRECACHE_SOUND("debris/bustglass1.wav");
 		PRECACHE_SOUND("debris/bustglass2.wav");
-		g_idGlassFrag = PRECACHE_MODEL("sprites/glassfrag.spr"); // the TS glass-shatter fragment
 		break;
 	case matMetal:
 		pGibName = "models/metalplategibs.mdl";
