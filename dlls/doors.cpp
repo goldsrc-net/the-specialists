@@ -318,6 +318,16 @@ LINK_ENTITY_TO_CLASS(func_water, CBaseDoor);
 
 void CBaseDoor::Spawn()
 {
+	// TS breakable-door init (@0xb60cc, first, as the original runs it): save the spawn pose for
+	// respawn before SetMovedir clears the angles and START_OPEN moves the door, reset the damage
+	// tally, and make the door damageable only if it carries a "maxdamage" threshold.
+	m_vecSpawnOrigin = pev->origin;
+	m_vecSpawnAngles = pev->angles;
+	m_bCracked = false;
+	m_flAccumDamage = 0;
+	m_flDoorNextAttack = 0;
+	pev->takedamage = (m_flBreakHealth > 0) ? DAMAGE_YES : DAMAGE_NO;
+
 	Precache();
 	SetMovedir(pev);
 
@@ -361,15 +371,6 @@ void CBaseDoor::Spawn()
 	}
 	else // touchable button
 		SetTouch(&CBaseDoor::DoorTouch);
-
-	// TS breakable-door init (@0xa60cc): save the spawn pose for respawn, reset the damage tally,
-	// and make the door damageable only if it carries a "maxdamage" threshold.
-	m_vecSpawnOrigin = pev->origin;
-	m_vecSpawnAngles = pev->angles;
-	m_bCracked = false;
-	m_flAccumDamage = 0;
-	m_flDoorNextAttack = 0;
-	pev->takedamage = (m_flBreakHealth > 0) ? DAMAGE_YES : DAMAGE_NO;
 
 	// @0xb60cc tail: a respawn-capable door creates its info_breakable retry-helper once
 	// (cross-linked by EHANDLE both ways), exactly like CBreakable::Spawn.
