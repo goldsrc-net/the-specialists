@@ -19,6 +19,8 @@
 #include "ts_mapglobals.h"
 #include "ts_playeramount.h"
 #include "ts_flag.h"          // HaveFlag (ts_trigger spawnflag 8)
+#include "ts_weapons.h"       // CashBased, get_weapon_info (ts_sellzone)
+#include "ts_worldgun.h"      // CTSWorldGun (ts_sellzone)
 
 // CTSTrigger — first in the original address order (extracted from ts_objectives.cpp).
 //============================================================================
@@ -703,8 +705,6 @@ void CTSMapGlobals::WaitThink(void)
 
 // ===================== ts_sellzone.cpp (merged) =====================
 
-#define SELLZONE_VALUE 500   // flat cash per weapon sold (price field is dead while CashBased off)
-
 class CTSSellZone : public CBaseEntity
 {
 public:
@@ -712,11 +712,14 @@ public:
 	void Spawn() override;
 	void EXPORT SellTouch(CBaseEntity *pOther);
 
-	int m_attackerTeam = -1; // tsobjective attackerteam (-1 = any)
+	// +0x64 — tsobjective attackerteam (-1 = any). Nothing initialises it (sizeof 0x68; GetClassPtr
+	// @0x63754 sets only the vptr), so a zone without the key has 0 from the engine's zeroed memory.
+	int m_attackerTeam = 0;
 };
 
 LINK_ENTITY_TO_CLASS(ts_sellzone, CTSSellZone)
 
+// @0x626c0 KeyValue — attackerteam only; any other key is not handled, with no base call.
 bool CTSSellZone::KeyValue(KeyValueData *pkvd)
 {
 	if (FStrEq(pkvd->szKeyName, "attackerteam"))
@@ -724,53 +727,63 @@ bool CTSSellZone::KeyValue(KeyValueData *pkvd)
 		m_attackerTeam = atoi(pkvd->szValue);
 		return true;
 	}
-	return CBaseEntity::KeyValue(pkvd);
+	return false;
 }
 
-// @ Spawn — a brush trigger that watches for dropped weapons sliding in.
+// @0x62720 Spawn — an invisible brush trigger. The model is set before solid, so the first links are
+// SOLID_NOT; MOVETYPE_FLY's physics relinks it as a trigger on its next frame.
 void CTSSellZone::Spawn()
 {
-	pev->solid = SOLID_TRIGGER;
-	pev->movetype = MOVETYPE_NONE;
-	if (!FStringNull(pev->model))
-		SET_MODEL(edict(), STRING(pev->model)); // brush model
+	pev->classname = MAKE_STRING("ts_sellzone");
+	SET_MODEL(ENT(pev), STRING(pev->model));
+	UTIL_SetSize(pev, pev->mins, pev->maxs);
 	UTIL_SetOrigin(pev, pev->origin);
+	pev->effects |= EF_NODRAW;
+	pev->solid = SOLID_TRIGGER;
+	pev->movetype = MOVETYPE_FLY;
 	SetTouch(&CTSSellZone::SellTouch);
+	SetThink(NULL);
 }
 
-// @ SellTouch — a dropped weapon (classname "WorldGun") entered the zone: sell it. Credit the nearest
-// living player (on the zone's team, if set) its value, then consume the gun.
+// @0x627e8 SellTouch — a dropped gun sells only while CashBased() (@0x62830), which is hard off in the
+// shipped game: a sell zone does nothing and the gun stays. When it sells, the gun needs its recorded
+// owner (m_status.hOwner, gun+0xbc, written on the buy path), and its dropper (m_pDropper, gun+0xd0) is
+// the seller if a player; the briefcase is not sold (@0x628d2); attackerteam is matched against the
+// dropper's team. The dropper's cash (+0x540) grows by half the weapon's price and half each attachment's
+// buy price (AddItem @0x8440c: silencer 900, laser 800, flashlight 500, scope 1800), written directly:
+// no clamp, no TSCash, no print. Then the gun is removed.
 void CTSSellZone::SellTouch(CBaseEntity *pOther)
 {
-	if (!pOther || !FClassnameIs(pOther->pev, "WorldGun"))
+	if (!FClassnameIs(pOther->pev, "WorldGun"))
+		return;
+	if (!CashBased())
 		return;
 
-	// find the nearest living player to the sold gun (the seller stand-in)
-	CBasePlayer *pBest = nullptr;
-	float flBest = 256.0f * 256.0f;
-	for (int i = 1; i <= gpGlobals->maxClients; i++)
-	{
-		CBaseEntity *pEnt = UTIL_PlayerByIndex(i);
-		if (!pEnt || !pEnt->IsAlive())
-			continue;
-		if (m_attackerTeam != -1 && TSGameRules->GetTeamIndex(pEnt->TeamID()) != m_attackerTeam)
-			continue;
-		float d = (pEnt->pev->origin - pOther->pev->origin).LengthSquared();
-		if (d < flBest)
-		{
-			flBest = d;
-			pBest = (CBasePlayer *)pEnt;
-		}
-	}
+	CTSWorldGun *pGun = (CTSWorldGun *)CBaseEntity::Instance(pOther->pev);
+	if (!pGun->m_status.hOwner)
+		return;
+	if (!pGun->m_pDropper)
+		return;
+	CBaseEntity *pSeller = CBaseEntity::Instance(pGun->m_pDropper);
+	if (!pSeller->IsPlayer())
+		return;
+	if (pGun->m_weaponType == TSW_FLAG)
+		return;
+	if (m_attackerTeam != -1 && TSGameRules->GetTeamIndex(pSeller->TeamID()) != m_attackerTeam)
+		return;
 
-	if (pBest)
-	{
-		pBest->GiveCash(SELLZONE_VALUE);
-		ClientPrint(pBest->pev, HUD_PRINTCENTER,
-			UTIL_VarArgs("Sold weapon (+$%d)", SELLZONE_VALUE));
-	}
+	CBasePlayer *pPlayer = (CBasePlayer *)pSeller;
+	pPlayer->m_iCash += get_weapon_info((tsweapon_t)pGun->m_weaponType)->iPrice / 2;
+	if (pGun->m_status.attach & 1)
+		pPlayer->m_iCash += 450;
+	if (pGun->m_status.attach & 2)
+		pPlayer->m_iCash += 400;
+	if (pGun->m_status.attach & 4)
+		pPlayer->m_iCash += 250;
+	if (pGun->m_status.attach & 8)
+		pPlayer->m_iCash += 900;
 
-	UTIL_Remove(pOther); // the gun is consumed by the sale
+	UTIL_Remove(pGun);
 }
 
 
