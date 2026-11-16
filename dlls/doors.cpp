@@ -89,7 +89,7 @@ public:
 	                      // its own for this, exactly like CBreakable)
 
 	float m_flBreakHealth = 0;   // +0x118 — "maxdamage": damage to shatter (<=0 = unbreakable)
-	int   m_iAccumDamage = 0;    // +0x110 — accumulated damage toward the threshold
+	float m_flAccumDamage = 0;   // +0x110 — accumulated damage toward the threshold (fsts @0xb5861)
 	int   m_DoorMaterial = 1;    // +0x11c — "doormaterial" (Materials; default 1 = matWood-ish)
 	float m_flRespawnTime = 0;   // +0x10c — "respawntime". DEFAULT 0 (gcc2 entity data is calloc'd:
 	                             // an absent keyvalue = 0 = the 30s default — breakable doors
@@ -97,6 +97,8 @@ public:
 	Vector m_vecSpawnOrigin;     // +0x124 — saved origin (restored on respawn)
 	Vector m_vecSpawnAngles;     // +0x130 — saved angles
 	float m_flDoorNextAttack = 0; // +0x114 — per-door damage cooldown
+	int   m_iGibModel = 0;       // +0x120 — the material's gib model index (Precache @0xb6b81)
+	bool  m_bCracked = false;    // +0x13c — cracked: DoorActivate refuses until a later hit breaks it
 };
 
 
@@ -364,7 +366,8 @@ void CBaseDoor::Spawn()
 	// and make the door damageable only if it carries a "maxdamage" threshold.
 	m_vecSpawnOrigin = pev->origin;
 	m_vecSpawnAngles = pev->angles;
-	m_iAccumDamage = 0;
+	m_bCracked = false;
+	m_flAccumDamage = 0;
 	m_flDoorNextAttack = 0;
 	pev->takedamage = (m_flBreakHealth > 0) ? DAMAGE_YES : DAMAGE_NO;
 
@@ -379,8 +382,8 @@ void CBaseDoor::Spawn()
 	}
 }
 
-// @0xb57ac TraceAttack — a breakable door accumulates damage and shatters (debris + material sound)
-// when it passes its maxdamage threshold, then schedules a respawn. // UNPLAYTESTED.
+// @0xb57ac TraceAttack — a breakable door accumulates damage and, past its maxdamage threshold,
+// cracks or shatters (break sound + debris), then schedules a respawn.
 void CBaseDoor::TraceAttack(entvars_t* pevAttacker, float flDamage, Vector vecDir, TraceResult* ptr, int bitsDamageType)
 {
 	if (gpGlobals->time < m_flDoorNextAttack)
@@ -397,30 +400,125 @@ void CBaseDoor::TraceAttack(entvars_t* pevAttacker, float flDamage, Vector vecDi
 	float dmg = flDamage;
 	if (bitsDamageType & DMG_BLAST) // @0xb5844 testl $0x40: blast does double
 		dmg *= 2;
-	m_iAccumDamage += (int)dmg;
-	if ((float)m_iAccumDamage < m_flBreakHealth)
+	m_flAccumDamage += dmg; // a float tally (fsts 0x110 @0xb5861), no truncation per hit
+	if (m_flAccumDamage < m_flBreakHealth)
 		return; // not enough yet
 
-	// shatter — emit debris flying in the shot (bullet-travel) direction.
-	Vector vecShatterDir = vecDir.Normalize();
-	Vector vecSpot = pev->origin + (pev->mins + pev->maxs) * 0.5f;
-	float vol = RANDOM_FLOAT(0.85f, 1.0f);
-	CBreakable::MaterialSoundRandom(ENT(pev), (Materials)m_DoorMaterial, vol);
-
-	if (m_DoorMaterial == matGlass && gmsgTSCreateDebris != 0)
+	// @0xb5878: past the threshold, a closed door that has not cracked yet may crack instead of
+	// breaking (RANDOM_LONG(0,100) over 50, over 30 for bit 25). A cracked door stays shut
+	// (DoorActivate refuses it) and the next hit past the 0.1 s delay breaks it.
+	if (!m_bCracked)
 	{
-		Vector vecShatter = vecShatterDir; // bullet travel dir (away from the shooter)
+		int crack = RANDOM_LONG(0, 100);
+		if (crack > ((bitsDamageType & 0x2000000) ? 30 : 50) && m_toggle_state == TS_AT_BOTTOM)
+		{
+			m_bCracked = true;
+			m_flDoorNextAttack = gpGlobals->time + 0.1;
+			return;
+		}
+	}
+
+	// @0xb58dc: the break sound, CBreakable::Die's pitch and volume, played directly at
+	// ATTN_NORM with the slow weight 0.5; the material picks the TE_BREAKMODEL flag
+	char cFlag = 0;
+	int pitch = 95 + RANDOM_LONG(0, 29);
+	if (pitch > 97 && pitch < 103)
+		pitch = 100;
+	float fvol = RANDOM_FLOAT(0.85, 1.0);
+	if (fvol > 1.0)
+		fvol = 1.0;
+
+	switch (m_DoorMaterial)
+	{
+	case matGlass:
+		switch (RANDOM_LONG(0, 1))
+		{
+		case 0:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustglass1.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		case 1:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustglass2.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		}
+		cFlag = BREAK_GLASS;
+		break;
+
+	case matWood:
+		switch (RANDOM_LONG(0, 1))
+		{
+		case 0:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustcrate1.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		case 1:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustcrate2.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		}
+		cFlag = BREAK_WOOD;
+		break;
+
+	case matComputer:
+	case matMetal:
+		switch (RANDOM_LONG(0, 1))
+		{
+		case 0:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustmetal1.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		case 1:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustmetal2.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		}
+		cFlag = BREAK_METAL;
+		break;
+
+	case matFlesh:
+		switch (RANDOM_LONG(0, 1))
+		{
+		case 0:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustflesh1.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		case 1:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustflesh2.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		}
+		cFlag = BREAK_FLESH;
+		break;
+
+	case matRocks:
+	case matCinderBlock:
+		switch (RANDOM_LONG(0, 1))
+		{
+		case 0:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustconcrete1.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		case 1:
+			EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustconcrete2.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+			break;
+		}
+		cFlag = BREAK_CONCRETE;
+		break;
+
+	case matCeilingTile:
+		EMIT_SOUND_DYN(ENT(pev), CHAN_VOICE, "debris/bustceiling.wav", fvol, ATTN_NORM, 0, pitch, 0.5);
+		break;
+	}
+
+	// @0xb5be4: the debris flies from the attacker through the door's centre, at twice the hit's
+	// damage (eight times that for bit 25)
+	Vector vecSpot = pev->origin + (pev->mins + pev->maxs) * 0.5f;
+	Vector vecVelocity = (vecSpot - pevAttacker->origin).Normalize() * flDamage * 2;
+	vecVelocity = vecVelocity * ((bitsDamageType & 0x2000000) ? 8 : 1);
+
+	if (m_DoorMaterial == matGlass)
+	{
+		// @0xb5ddc: the glass TSFrags carries zeros after the material
 		MESSAGE_BEGIN(MSG_PVS, gmsgTSCreateDebris, vecSpot);
 		WRITE_COORD(vecSpot.x); WRITE_COORD(vecSpot.y); WRITE_COORD(vecSpot.z);
 		WRITE_COORD(pev->size.x); WRITE_COORD(pev->size.y); WRITE_COORD(pev->size.z);
 		WRITE_BYTE(0); // material 0 = glass
-		// @0x752e0 wire order (see func_break Die): triple 1 = impact POINT, triple 2 = DIRECTION; the LONG
-		// is the killing hit's bitsDamageType (selects the client velocity branch); velMag = damage (×8 for
-		// the shotgun bit 0x2000000). The client resolves the glassfrag sprite by name.
-		WRITE_COORD(ptr->vecEndPos.x); WRITE_COORD(ptr->vecEndPos.y); WRITE_COORD(ptr->vecEndPos.z); // triple 1 = impact point
-		WRITE_COORD(vecShatter.x); WRITE_COORD(vecShatter.y); WRITE_COORD(vecShatter.z);             // triple 2 = direction
-		WRITE_LONG(bitsDamageType);
-		WRITE_COORD((bitsDamageType & 0x2000000) ? flDamage * 8.0f : flDamage);
+		WRITE_COORD(0); WRITE_COORD(0); WRITE_COORD(0);
+		WRITE_COORD(0); WRITE_COORD(0); WRITE_COORD(0);
+		WRITE_LONG(0);
+		WRITE_COORD(0);
 		MESSAGE_END();
 	}
 	else
@@ -429,12 +527,12 @@ void CBaseDoor::TraceAttack(entvars_t* pevAttacker, float flDamage, Vector vecDi
 		WRITE_BYTE(TE_BREAKMODEL);
 		WRITE_COORD(vecSpot.x); WRITE_COORD(vecSpot.y); WRITE_COORD(vecSpot.z);
 		WRITE_COORD(pev->size.x); WRITE_COORD(pev->size.y); WRITE_COORD(pev->size.z);
-		WRITE_COORD(0); WRITE_COORD(0); WRITE_COORD(25); // velocity
-		WRITE_BYTE(10);                                  // randomization
-		WRITE_SHORT(MODEL_INDEX((char*)STRING(pev->model))); // gib the door's own model
-		WRITE_BYTE(0);  // shard count (client decides)
-		WRITE_BYTE(25); // duration (2.5s)
-		WRITE_BYTE(0x19); // flags
+		WRITE_COORD(vecVelocity.x); WRITE_COORD(vecVelocity.y); WRITE_COORD(vecVelocity.z);
+		WRITE_BYTE(10);           // randomization
+		WRITE_SHORT(m_iGibModel); // the material's gib model (Precache)
+		WRITE_BYTE(0);            // shard count (client decides)
+		WRITE_BYTE(25);           // duration (2.5s)
+		WRITE_BYTE(cFlag);
 		MESSAGE_END();
 	}
 
@@ -681,15 +779,59 @@ void CBaseDoor::Precache()
 		break;
 	}
 
-	// TS breakable-door debris assets (only when the door carries a maxdamage threshold).
+	// TS breakable-door debris assets (@0xb6a16, only when the door carries a maxdamage threshold):
+	// the break sounds and the material's gib model, whose index TraceAttack's TE_BREAKMODEL sends.
 	if (m_flBreakHealth > 0)
 	{
+		const char* pGibName;
+
+		switch (m_DoorMaterial)
+		{
+		case matGlass:
+		case matUnbreakableGlass:
+			pGibName = "models/glassgibs.mdl";
+
+			PRECACHE_SOUND("debris/bustglass1.wav");
+			PRECACHE_SOUND("debris/bustglass2.wav");
+			break;
+		default: // wood, flesh and rocks
+			pGibName = "models/woodgibs.mdl";
+
+			PRECACHE_SOUND("debris/bustcrate1.wav");
+			PRECACHE_SOUND("debris/bustcrate2.wav");
+			break;
+		case matMetal:
+			pGibName = "models/metalplategibs.mdl";
+
+			PRECACHE_SOUND("debris/bustmetal1.wav");
+			PRECACHE_SOUND("debris/bustmetal2.wav");
+			break;
+		case matCinderBlock:
+			pGibName = "models/cindergibs.mdl";
+
+			PRECACHE_SOUND("debris/bustconcrete1.wav");
+			PRECACHE_SOUND("debris/bustconcrete2.wav");
+			break;
+		case matCeilingTile:
+			pGibName = "models/ceilinggibs.mdl";
+
+			PRECACHE_SOUND("debris/bustceiling.wav");
+			break;
+		case matComputer:
+			PRECACHE_SOUND("buttons/spark5.wav");
+			PRECACHE_SOUND("buttons/spark6.wav");
+			pGibName = "models/computergibs.mdl";
+
+			PRECACHE_SOUND("debris/bustmetal1.wav");
+			PRECACHE_SOUND("debris/bustmetal2.wav");
+			break;
+		}
+
 		CBreakable::MaterialSoundPrecache((Materials)m_DoorMaterial);
-		if (m_DoorMaterial == matGlass)
-			PRECACHE_MODEL("sprites/glassfrag.spr");
-		else
-			PRECACHE_MODEL((char*)STRING(pev->model)); // gib the door's own model
+		m_iGibModel = PRECACHE_MODEL(pGibName);
 	}
+	else
+		m_iGibModel = 0;
 }
 
 //
@@ -742,6 +884,9 @@ void CBaseDoor::Use(CBaseEntity* pActivator, CBaseEntity* pCaller, USE_TYPE useT
 //
 bool CBaseDoor::DoorActivate()
 {
+	if (m_bCracked) // @0xb6d50: a cracked door stays shut until TraceAttack breaks it
+		return false;
+
 	if (!UTIL_IsMasterTriggered(m_sMaster, m_hActivator))
 		return false;
 
@@ -1070,7 +1215,8 @@ void CRotDoor::Spawn()
 {
 	m_vecSpawnOrigin = pev->origin;
 	m_vecSpawnAngles = pev->angles;
-	m_iAccumDamage = 0;
+	m_bCracked = false;
+	m_flAccumDamage = 0;
 	m_flDoorNextAttack = 0;
 	pev->takedamage = (m_flBreakHealth > 0) ? DAMAGE_YES : DAMAGE_NO;
 
